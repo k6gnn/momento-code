@@ -5,9 +5,11 @@ import com.momento.security.AuthenticatedUser;
 import com.momento.service.CapsuleService;
 import com.momento.service.UserProfileService;
 import com.momento.entity.UserProfile;
-import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -24,17 +26,38 @@ public class CapsuleController {
     }
 
     @GetMapping("/capsules/nearby")
-    public List<NearbyCapsuleResponse> nearby(@AuthenticationPrincipal AuthenticatedUser user, @RequestParam double latitude, @RequestParam double longitude, @RequestParam(defaultValue = "50") int radiusMeters) {
+    public List<NearbyCapsuleResponse> nearby(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam double latitude,
+            @RequestParam double longitude,
+            @RequestParam(defaultValue = "50") int radiusMeters) {
         return capsuleService.getNearby(user, latitude, longitude, radiusMeters);
     }
 
-    @PostMapping("/capsules")
-    public void create(@AuthenticationPrincipal AuthenticatedUser user, @Valid @RequestBody CreateCapsuleRequest request) {
-        capsuleService.create(user, request);
+    /**
+     * Create a capsule with optional photo.
+     * Accepts multipart/form-data so the real image bytes are transferred.
+     * Fields:
+     *   latitude    – required
+     *   longitude   – required
+     *   textContent – optional text message
+     *   photo       – optional image file
+     */
+    @PostMapping(value = "/capsules", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public void create(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam @NotNull Double latitude,
+            @RequestParam @NotNull Double longitude,
+            @RequestParam(required = false) String textContent,
+            @RequestPart(required = false) MultipartFile photo) {
+        capsuleService.create(user, latitude, longitude, textContent, photo);
     }
 
     @PostMapping("/capsules/{capsuleId}/unlock")
-    public UnlockResponse unlock(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID capsuleId, @Valid @RequestBody UnlockRequest request) {
+    public UnlockResponse unlock(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID capsuleId,
+            @RequestBody UnlockRequest request) {
         return capsuleService.unlock(user, capsuleId, request);
     }
 
@@ -56,6 +79,10 @@ public class CapsuleController {
     @GetMapping("/users/me")
     public ProfileResponse me(@AuthenticationPrincipal AuthenticatedUser user) {
         UserProfile profile = userProfileService.getOrCreate(user);
-        return new ProfileResponse(profile.getUsername(), profile.getPointsTotal(), userProfileService.droppedCount(profile), userProfileService.discoveredCount(profile));
+        return new ProfileResponse(
+                profile.getUsername(),
+                profile.getPointsTotal(),
+                userProfileService.droppedCount(profile),
+                userProfileService.discoveredCount(profile));
     }
 }

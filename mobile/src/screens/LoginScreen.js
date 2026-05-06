@@ -8,12 +8,21 @@ export default function LoginScreen({ navigation }) {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const submit = async () => {
+    if (!email.trim() || !password) {
+      Alert.alert('Missing fields', 'Please enter your email and password.');
+      return;
+    }
+    setLoading(true);
     try {
       await login(email.trim(), password);
+      // Navigation is handled automatically by AppRouter once user state changes.
     } catch (e) {
       Alert.alert('Login failed', e.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -22,11 +31,31 @@ export default function LoginScreen({ navigation }) {
       <Text style={{ fontSize: 32, fontWeight: '700' }}>Momento</Text>
       <Text>Sign in to discover and drop capsules.</Text>
       <Label>Email</Label>
-      <Input autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
+      <Input
+        autoCapitalize="none"
+        keyboardType="email-address"
+        textContentType="emailAddress"
+        autoComplete="email"
+        value={email}
+        onChangeText={setEmail}
+        placeholder="you@example.com"
+      />
       <Label>Password</Label>
-      <Input secureTextEntry value={password} onChangeText={setPassword} />
-      <Button title="Sign in" onPress={submit} />
-      <Button title="Create account" kind="secondary" onPress={() => navigation.navigate('Register')} />
+      <Input
+        secureTextEntry
+        textContentType="password"
+        autoComplete="password"
+        value={password}
+        onChangeText={setPassword}
+        placeholder="••••••••"
+      />
+      <Button title="Sign in" onPress={submit} loading={loading} />
+      <Button
+        title="Create account"
+        kind="secondary"
+        onPress={() => navigation.navigate('Register')}
+        disabled={loading}
+      />
     </Screen>
   );
 }

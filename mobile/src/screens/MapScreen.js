@@ -1,28 +1,57 @@
-import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import Screen from '../components/Screen';
 import useLocation from '../hooks/useLocation';
 import { getNearbyCapsules } from '../api/capsules';
 import { palette } from '../theme/palette';
 
 export default function MapScreen({ navigation }) {
-  const { location, error } = useLocation();
+  const { location, error: locationError } = useLocation();
   const [capsules, setCapsules] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = () => {
+  const load = useCallback(async () => {
     if (!location) return;
     setRefreshing(true);
-    getNearbyCapsules(location.latitude, location.longitude)
-      .then(({ data }) => setCapsules(data))
-      .catch(e => Alert.alert('Error', e.message))
-      .finally(() => setRefreshing(false));
-  };
+    try {
+      const { data } = await getNearbyCapsules(location.latitude, location.longitude);
+      setCapsules(data);
+    } catch (e) {
+      Alert.alert('Could not load capsules', e.message);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [location]);
 
-  useEffect(() => { load(); }, [location]);
+  // Reload whenever the user's position changes meaningfully (handled by
+  // useLocation's distanceInterval: 10 m threshold).
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  if (error) return <Screen><Text style={styles.msg}>{error}</Text></Screen>;
-  if (!location) return <Screen><Text style={styles.msg}>Getting your location…</Text></Screen>;
+  if (locationError) {
+    return (
+      <Screen>
+        <Text style={styles.msg}>{locationError}</Text>
+      </Screen>
+    );
+  }
+
+  if (!location) {
+    return (
+      <Screen>
+        <Text style={styles.msg}>Getting your location…</Text>
+      </Screen>
+    );
+  }
 
   return (
     <Screen scroll={false}>
@@ -33,9 +62,22 @@ export default function MapScreen({ navigation }) {
       </View>
 
       <Text style={styles.heading}>Nearby Capsules</Text>
-      <Text style={styles.sub}>{capsules.length} capsule{capsules.length !== 1 ? 's' : ''} within range</Text>
+      <Text style={styles.sub}>
+        {capsules.length} capsule{capsules.length !== 1 ? 's' : ''} within range
+      </Text>
 
-      <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.list}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={load}
+            tintColor={palette.primary}
+            colors={[palette.primary]}
+          />
+        }
+      >
         {capsules.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyIcon}>🗺️</Text>
@@ -47,7 +89,13 @@ export default function MapScreen({ navigation }) {
             <TouchableOpacity
               key={c.id}
               style={styles.card}
-              onPress={() => navigation.navigate('CapsuleDetail', { capsule: c, currentLocation: location })}
+              activeOpacity={0.75}
+              onPress={() =>
+                navigation.navigate('CapsuleDetail', {
+                  capsule: c,
+                  currentLocation: location,
+                })
+              }
             >
               <View style={styles.cardLeft}>
                 <Text style={styles.cardIcon}>📦</Text>
@@ -65,7 +113,12 @@ export default function MapScreen({ navigation }) {
         )}
       </ScrollView>
 
-      <TouchableOpacity style={styles.refreshBtn} onPress={load}>
+      <TouchableOpacity
+        style={[styles.refreshBtn, refreshing && styles.refreshBtnDisabled]}
+        onPress={load}
+        disabled={refreshing}
+        activeOpacity={0.75}
+      >
         <Text style={styles.refreshText}>{refreshing ? 'Refreshing…' : '🔄 Refresh'}</Text>
       </TouchableOpacity>
     </Screen>
@@ -112,5 +165,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
+  refreshBtnDisabled: { opacity: 0.5 },
   refreshText: { fontSize: 14, fontWeight: '600', color: palette.primary },
 });

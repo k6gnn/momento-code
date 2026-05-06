@@ -27,22 +27,12 @@ public class S3Service {
                      @Value("${app.aws.bucket}") String bucket,
                      @Value("${app.aws.access-key-id}") String accessKey,
                      @Value("${app.aws.secret-access-key}") String secretKey,
-                     @Value("${app.aws.endpoint:#{null}}") String endpoint,
                      @Value("${app.aws.presigned-url-minutes}") int presignedMinutes) {
         var creds = StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey));
         this.bucket = bucket;
         this.presignedMinutes = presignedMinutes;
-        
-        var s3Builder = S3Client.builder().region(Region.of(region)).credentialsProvider(creds);
-        var presignBuilder = S3Presigner.builder().region(Region.of(region)).credentialsProvider(creds);
-        
-        if (endpoint != null && !endpoint.isBlank()) {
-            s3Builder.endpointOverride(java.net.URI.create(endpoint));
-            presignBuilder.endpointOverride(java.net.URI.create(endpoint));
-        }
-        
-        this.s3Client = s3Builder.build();
-        this.presigner = presignBuilder.build();
+        this.s3Client = S3Client.builder().region(Region.of(region)).credentialsProvider(creds).build();
+        this.presigner = S3Presigner.builder().region(Region.of(region)).credentialsProvider(creds).build();
     }
 
     public void uploadBytes(String key, byte[] bytes, String contentType) {

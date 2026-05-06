@@ -6,6 +6,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -22,11 +24,8 @@ import java.util.UUID;
 @Component
 public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
-    /**
-     * Prevent Spring Boot from also registering this filter outside the Security
-     * filter chain (which would apply it twice – once by Security, once by the
-     * servlet container's normal FilterRegistrationBean scan).
-     */
+    private static final Logger log = LoggerFactory.getLogger(FirebaseAuthenticationFilter.class);
+
     @Bean
     public FilterRegistrationBean<FirebaseAuthenticationFilter> disableAutoRegistration(
             FirebaseAuthenticationFilter filter) {
@@ -38,15 +37,13 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
+
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) {
             try {
                 String token = header.substring(7);
                 FirebaseToken decoded = FirebaseAuth.getInstance().verifyIdToken(token);
 
-                // Use UUID.nameUUIDFromBytes on a namespaced byte sequence to reduce
-                // collision risk vs. bare UID strings. The Firebase UID is prefixed
-                // with a fixed namespace so different short UIDs always differ.
                 String namespacedUid = "firebase:" + decoded.getUid();
                 UUID internalId = UUID.nameUUIDFromBytes(namespacedUid.getBytes(StandardCharsets.UTF_8));
 
@@ -58,11 +55,15 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                 var auth = new UsernamePasswordAuthenticationToken(
                         principal, token, List.of(new SimpleGrantedAuthority("ROLE_USER")));
                 SecurityContextHolder.getContext().setAuthentication(auth);
-            } catch (Exception ignored) {
-                // Invalid or expired token – request continues unauthenticated
-                // and Spring Security will reject it at the authorisation layer.
+
+            } catch (Exception e) {
+                // Log the real reason so we can debug 403s.
+                log.warn("[Firebase] Token verification failed: {} — {}", e.getClass().getSimpleName(), e.getMessage());
             }
+        } else {
+            log.debug("[Firebase] No Bearer token on {} {}", request.getMethod(), request.getRequestURI());
         }
+
         filterChain.doFilter(request, response);
     }
 }

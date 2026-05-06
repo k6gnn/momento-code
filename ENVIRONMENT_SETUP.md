@@ -1,6 +1,8 @@
-# Momento environment setup
+# Momento — Environment Setup
 
-This guide matches the current prototype stack: Expo React Native mobile app, Spring Boot backend, PostgreSQL-compatible database, Firebase Authentication, Google Maps, and private AWS S3 media storage.
+This guide covers the current stack: **Expo SDK 54** React Native mobile app, Spring Boot backend, PostgreSQL + PostGIS database, Firebase Authentication, and private AWS S3 media storage.
+
+---
 
 ## 1. Create local env files
 
@@ -16,6 +18,9 @@ EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=859202829327
 EXPO_PUBLIC_FIREBASE_APP_ID=
 EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=
 ```
+
+> **Replace `192.168.1.135`** with your computer's actual LAN IP address.  
+> The mobile device and your computer must be on the same Wi-Fi network.
 
 ### Backend: `backend/.env`
 
@@ -38,38 +43,40 @@ FIREBASE_SERVICE_ACCOUNT_PATH=
 NOTIFICATIONS_ENABLED=false
 ```
 
-## 2. Values still missing
+---
 
-These values are still blank in the environment snapshot and must be filled before the full prototype can run:
+## 2. Values still required before running
 
-- `EXPO_PUBLIC_FIREBASE_API_KEY`
-- `EXPO_PUBLIC_FIREBASE_APP_ID`
-- `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY`
-- `DB_PASSWORD`
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `FIREBASE_SERVICE_ACCOUNT_PATH`
+| Variable | Where needed |
+|---|---|
+| `EXPO_PUBLIC_FIREBASE_API_KEY` | Mobile |
+| `EXPO_PUBLIC_FIREBASE_APP_ID` | Mobile |
+| `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` | Mobile (for future map view) |
+| `DB_PASSWORD` | Backend |
+| `AWS_ACCESS_KEY_ID` | Backend |
+| `AWS_SECRET_ACCESS_KEY` | Backend |
+| `FIREBASE_SERVICE_ACCOUNT_PATH` | Backend |
 
-Also fix the backend Firebase project id typo: use `momento-project-app` consistently, not `momento-project-ap`.
+---
 
-## 3. Database note
+## 3. Database
 
-The design documents require PostgreSQL with PostGIS for geospatial queries. If your Supabase database is PostgreSQL, it can work for the prototype as long as PostGIS is enabled and the schema is applied.
+PostgreSQL with PostGIS must be enabled. If you are using Supabase, run the schema from `database/schema.sql` inside the Supabase SQL editor after confirming PostGIS is available.
 
-Run the schema from `database/schema.sql` after confirming PostGIS is available.
+---
 
 ## 4. Backend run
 
-From the backend folder:
-
+**macOS / Linux:**
 ```bash
+cd backend
 export $(grep -v '^#' .env | xargs)
 ./gradlew bootRun
 ```
 
-On Windows PowerShell:
-
+**Windows PowerShell:**
 ```powershell
+cd backend
 Get-Content .env | ForEach-Object {
   if ($_ -match '^[^#].+=') {
     $name, $value = $_ -split '=', 2
@@ -79,35 +86,43 @@ Get-Content .env | ForEach-Object {
 ./gradlew bootRun
 ```
 
-The Spring Boot application is already wired to read all required values from environment variables through `application.yml`.
+---
 
 ## 5. Mobile run
 
-From the mobile folder:
-
 ```bash
+cd mobile
 npm install
 npx expo start
 ```
 
-Expo will load the `EXPO_PUBLIC_*` values from `mobile/.env`. Use the LAN URL because the phone must reach the backend on your computer over the local network.
+Expo loads all `EXPO_PUBLIC_*` values from `mobile/.env` automatically.  
+Use the **LAN** URL (not Tunnel) so the phone can reach the backend on your local network.
 
-## 6. Google Maps and Firebase
+---
 
-- Enable Email/Password in Firebase Authentication.
-- Download a Firebase Admin SDK service account JSON and place its absolute path in `FIREBASE_SERVICE_ACCOUNT_PATH`.
-- Create a Google Maps API key and enable the mobile Maps SDK you need.
+## 6. Firebase setup
 
-## 7. S3 storage
+1. Create a Firebase project and enable **Email/Password** sign-in.
+2. Copy `apiKey`, `authDomain`, `projectId`, `storageBucket`, `messagingSenderId`, and `appId` into `mobile/.env`.
+3. Download the **Admin SDK service account JSON** and set `FIREBASE_SERVICE_ACCOUNT_PATH` to its absolute path on the machine running the backend.
 
-Keep the bucket private. The backend should use the AWS credentials, and the mobile app should never contain the AWS secret key.
+---
 
-## 8. Current blockers
+## 7. AWS S3 setup
 
-Until the blank values are filled, the app can compile but the following areas will not work fully:
+- Keep the bucket **private** — the app never directly exposes S3 URLs.
+- The backend generates short-lived signed URLs (default 15 min) after authorizing an unlock.
+- The IAM user needs only `s3:GetObject` and `s3:PutObject` on the bucket.
 
-- Firebase login and session handling
-- Google Maps display
-- Backend database connection
-- S3 media upload and signed URL generation
-- Firebase Admin JWT verification
+---
+
+## 8. Current feature blockers (won't work without credentials)
+
+| Feature | Blocked until |
+|---|---|
+| Firebase login / registration | `EXPO_PUBLIC_FIREBASE_API_KEY` + `EXPO_PUBLIC_FIREBASE_APP_ID` |
+| Auth persistence across restarts | same (handled via AsyncStorage once Firebase is configured) |
+| Backend database connection | `DB_PASSWORD` |
+| S3 media upload + signed URLs | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` |
+| Backend JWT verification | `FIREBASE_SERVICE_ACCOUNT_PATH` |

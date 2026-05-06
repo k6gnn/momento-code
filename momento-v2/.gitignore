@@ -1,0 +1,51 @@
+# Secrets & Environment
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+backend/secrets/
+mobile/.expo/
+
+# Dependencies
+node_modules/
+backend/.gradle/
+backend/build/
+.pnp
+.pnp.js
+
+# OS Files
+.DS_Store
+Thumbs.db
+*.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*.iml
+
+# Expo & React Native
+mobile/dist/
+mobile/web-build/
+mobile/npm-debug.log*
+mobile/yarn-debug.log*
+mobile/yarn-error.log*
+
+# Android / iOS generated files (if any)
+mobile/android/
+mobile/ios/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Java / Gradle
+backend/out/
+backend/bin/
+.gradletasknamecache

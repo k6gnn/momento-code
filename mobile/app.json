@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "Momento",
+    "slug": "momento-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": null,
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
+    "splash": {
+      "backgroundColor": "#f7f6f2",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.momento.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Momento needs your location to find and drop capsules near you.",
+        "NSCameraUsageDescription": "Momento needs camera access to add photos to capsules.",
+        "NSPhotoLibraryUsageDescription": "Momento needs photo library access to add photos to capsules."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#f7f6f2"
+      },
+      "package": "com.momento.app",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Momento needs your location to find and drop capsules near you."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Momento needs photo library access to add photos to capsules.",
+          "cameraPermission": "Momento needs camera access to add photos to capsules."
+        }
+      ]
+    ],
+    "updates": {
+      "enabled": false
+    }
+  }
+}

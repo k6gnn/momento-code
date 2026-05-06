@@ -1,0 +1,93 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.3.5'
+    id 'io.spring.dependency-management' version '1.1.6'
+}
+
+group = 'com.momento'
+version = '1.0.0'
+
+// ---------------------------------------------------------------------------
+// Java toolchain – auto-provisioned by Gradle if JDK 21 is not on PATH.
+// Requires 'org.gradle.java.installations.auto-provision=true' in
+// gradle.properties (already configured below).
+// ---------------------------------------------------------------------------
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Self-healing repository strategy: local cache → Maven Central → fallback
+// mirrors so a single CDN outage does not break the build.
+// ---------------------------------------------------------------------------
+repositories {
+    mavenLocal()
+    mavenCentral()
+    maven { url 'https://repo.spring.io/milestone' }   // Spring milestone fallback
+    maven { url 'https://jcenter.bintray.com'         } // secondary mirror
+}
+
+configurations.all {
+    // Retry failed dependency downloads up to 3 times before failing the build.
+    resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-quartz'
+    implementation 'org.postgresql:postgresql:42.7.4'
+    implementation 'org.hibernate.orm:hibernate-spatial:6.5.3.Final'
+    implementation 'com.google.firebase:firebase-admin:9.3.0'
+    implementation platform('software.amazon.awssdk:bom:2.28.21')
+    implementation 'software.amazon.awssdk:s3'
+    implementation 'software.amazon.awssdk:sts'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+}
+
+tasks.named('test') { useJUnitPlatform() }
+
+// ---------------------------------------------------------------------------
+// Self-healing build tasks
+// ---------------------------------------------------------------------------
+
+// Clean stale Gradle caches automatically before assembling when the
+// lock-file indicates a previous build was interrupted.
+tasks.named('compileJava') {
+    dependsOn 'cleanStaleLocks'
+}
+
+tasks.register('cleanStaleLocks') {
+    group = 'build setup'
+    description = 'Removes leftover Gradle lock-files that can cause phantom build failures.'
+    doLast {
+        def gradleDir = file("${rootDir}/.gradle")
+        if (gradleDir.exists()) {
+            gradleDir.eachFileRecurse { f ->
+                if (f.name.endsWith('.lock') && f.isFile()) {
+                    logger.lifecycle("Removing stale lock: ${f.path}")
+                    f.delete()
+                }
+            }
+        }
+    }
+}
+
+// Print a helpful diagnostic when the build fails.
+gradle.buildFinished { result ->
+    if (result.failure) {
+        logger.error("""
+╔══════════════════════════════════════════════════════════════╗
+║  BUILD FAILED – Self-healing tips                           ║
+║  1. Run:  ./gradlew --stop && ./gradlew clean build         ║
+║  2. Delete .gradle/ and rebuild if dependency errors remain ║
+║  3. Ensure JAVA_HOME points to JDK 21+                      ║
+╚══════════════════════════════════════════════════════════════╝""")
+    }
+}

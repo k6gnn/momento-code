@@ -1,6 +1,15 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import {
+  getReactNativePersistence,
+  initializeAuth,
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+} from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -8,14 +17,24 @@ const firebaseConfig = {
   projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
   storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
-console.log('Firebase Config:', firebaseConfig);
-const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
+// Initialise once; reuse the existing instance on hot reloads.
+let firebaseApp;
+let auth;
+if (getApps().length === 0) {
+  firebaseApp = initializeApp(firebaseConfig);
+  // initializeAuth with AsyncStorage persistence so the user stays
+  // logged in across app restarts without needing a fresh token exchange.
+  auth = initializeAuth(firebaseApp, {
+    persistence: getReactNativePersistence(AsyncStorage),
+  });
+} else {
+  firebaseApp = getApp();
+  auth = getAuth(firebaseApp);
+}
 
-// getAuth is now called after initializeApp is guaranteed to have run.
-const auth = getAuth(firebaseApp);
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
@@ -30,13 +49,17 @@ export function AuthProvider({ children }) {
     return unsub;
   }, []);
 
-  const value = useMemo(() => ({
-    user,
-    initializing,
-    login: (email, password) => signInWithEmailAndPassword(auth, email, password),
-    register: (email, password) => createUserWithEmailAndPassword(auth, email, password),
-    logout: () => signOut(auth)
-  }), [user, initializing]);
+  const value = useMemo(
+    () => ({
+      user,
+      initializing,
+      login: (email, password) => signInWithEmailAndPassword(auth, email, password),
+      register: (email, password) =>
+        createUserWithEmailAndPassword(auth, email, password),
+      logout: () => signOut(auth),
+    }),
+    [user, initializing],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

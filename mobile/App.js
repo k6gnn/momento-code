@@ -19,18 +19,45 @@ const Tab = createBottomTabNavigator();
 const AuthStack = createNativeStackNavigator();
 const MapStack = createNativeStackNavigator();
 
+const NAV_THEME = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: palette.bg,
+    text: palette.text,
+    card: palette.surface,
+    border: palette.border,
+    primary: palette.primary,
+  },
+};
+
 function MapStackNavigator() {
   return (
     <MapStack.Navigator>
-      <MapStack.Screen name="MapHome" component={MapScreen} options={{ title: 'Nearby Capsules' }} />
-      <MapStack.Screen name="CapsuleDetail" component={CapsuleDetailScreen} options={{ title: 'Capsule' }} />
+      <MapStack.Screen
+        name="MapHome"
+        component={MapScreen}
+        options={{ title: 'Nearby Capsules' }}
+      />
+      <MapStack.Screen
+        name="CapsuleDetail"
+        component={CapsuleDetailScreen}
+        options={{ title: 'Capsule' }}
+      />
     </MapStack.Navigator>
   );
 }
 
 function AppTabs() {
   return (
-    <Tab.Navigator screenOptions={{ headerShown: false }}>
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: palette.primary,
+        tabBarInactiveTintColor: palette.muted,
+        tabBarStyle: { backgroundColor: palette.surface, borderTopColor: palette.border },
+      }}
+    >
       <Tab.Screen name="Map" component={MapStackNavigator} />
       <Tab.Screen name="Create" component={CreateCapsuleScreen} />
       <Tab.Screen name="History" component={HistoryScreen} />
@@ -42,7 +69,7 @@ function AppTabs() {
 
 function AuthNavigator() {
   return (
-    <AuthStack.Navigator>
+    <AuthStack.Navigator screenOptions={{ headerShown: false }}>
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="Register" component={RegisterScreen} />
     </AuthStack.Navigator>
@@ -51,11 +78,19 @@ function AuthNavigator() {
 
 function AppRouter() {
   const { user, initializing } = useAuth();
+
+  // Return null (blank screen) while Firebase resolves the persisted session.
+  // The splash screen stays visible on native until the first render completes.
   if (initializing) return null;
+
   return (
-    <NavigationContainer theme={{ ...DefaultTheme, colors: { ...DefaultTheme.colors, background: palette.bg, text: palette.text, card: palette.surface, border: palette.border, primary: palette.primary } }}>
-      <RootStack.Navigator screenOptions={{ headerShown: false }}>
-        {user ? <RootStack.Screen name="AppTabs" component={AppTabs} /> : <RootStack.Screen name="Auth" component={AuthNavigator} />}
+    <NavigationContainer theme={NAV_THEME}>
+      <RootStack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
+        {user ? (
+          <RootStack.Screen name="AppTabs" component={AppTabs} />
+        ) : (
+          <RootStack.Screen name="Auth" component={AuthNavigator} />
+        )}
       </RootStack.Navigator>
       <StatusBar style="dark" />
     </NavigationContainer>

@@ -8,16 +8,30 @@ import java.util.UUID;
 @Table(name = "users")
 public class UserProfile {
     @Id
-    @Column(name = "user_id")
+    @Column(name = "user_id", columnDefinition = "uuid")
     private UUID userId;
+
     @Column(nullable = false, unique = true)
     private String email;
+
     @Column(nullable = false)
     private String username;
+
     @Column(name = "points_total", nullable = false)
     private Integer pointsTotal = 0;
+
+    @Column(name = "dropped_count", nullable = false)
+    private Integer droppedCount = 0;
+
+    @Column(name = "discovered_count", nullable = false)
+    private Integer discoveredCount = 0;
+
+    @Column(name = "fcm_token")
+    private String fcmToken;
+
     @Column(name = "auth_provider", nullable = false)
     private String authProvider = "FIREBASE";
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
@@ -29,6 +43,12 @@ public class UserProfile {
     public void setUsername(String username) { this.username = username; }
     public Integer getPointsTotal() { return pointsTotal; }
     public void setPointsTotal(Integer pointsTotal) { this.pointsTotal = pointsTotal; }
+    public Integer getDroppedCount() { return droppedCount; }
+    public void setDroppedCount(Integer droppedCount) { this.droppedCount = droppedCount; }
+    public Integer getDiscoveredCount() { return discoveredCount; }
+    public void setDiscoveredCount(Integer discoveredCount) { this.discoveredCount = discoveredCount; }
+    public String getFcmToken() { return fcmToken; }
+    public void setFcmToken(String fcmToken) { this.fcmToken = fcmToken; }
     public String getAuthProvider() { return authProvider; }
     public void setAuthProvider(String authProvider) { this.authProvider = authProvider; }
     public OffsetDateTime getCreatedAt() { return createdAt; }

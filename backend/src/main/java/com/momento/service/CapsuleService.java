@@ -2,15 +2,13 @@ package com.momento.service;
 
 import com.momento.dto.CapsuleDtos.*;
 import com.momento.entity.*;
-import com.momento.exception.S3StorageException;
 import com.momento.repository.*;
 import com.momento.security.AuthenticatedUser;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.Point;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,8 +22,6 @@ import java.util.UUID;
 
 @Service
 public class CapsuleService {
-    private static final Logger log = LoggerFactory.getLogger(CapsuleService.class);
-
     private final CapsuleRepository capsuleRepository;
     private final MediaObjectRepository mediaObjectRepository;
     private final DiscoveryRepository discoveryRepository;
@@ -38,7 +34,16 @@ public class CapsuleService {
     private final int dropPoints;
     private final int discoveryPoints;
 
-    public CapsuleService(CapsuleRepository capsuleRepository, MediaObjectRepository mediaObjectRepository, DiscoveryRepository discoveryRepository, UserProfileRepository userProfileRepository, UserProfileService userProfileService, S3Service s3Service, NotificationService notificationService, @Value("${app.security.proximity-radius-meters}") int proximityRadiusMeters, @Value("${app.security.drop-points}") int dropPoints, @Value("${app.security.discovery-points}") int discoveryPoints) {
+    public CapsuleService(CapsuleRepository capsuleRepository,
+                          MediaObjectRepository mediaObjectRepository,
+                          DiscoveryRepository discoveryRepository,
+                          UserProfileRepository userProfileRepository,
+                          UserProfileService userProfileService,
+                          S3Service s3Service,
+                          NotificationService notificationService,
+                          @Value("${app.security.proximity-radius-meters}") int proximityRadiusMeters,
+                          @Value("${app.security.drop-points}") int dropPoints,
+                          @Value("${app.security.discovery-points}") int discoveryPoints) {
         this.capsuleRepository = capsuleRepository;
         this.mediaObjectRepository = mediaObjectRepository;
         this.discoveryRepository = discoveryRepository;
@@ -59,50 +64,61 @@ public class CapsuleService {
     }
 
     @Transactional
-    public void create(AuthenticatedUser authUser, CreateCapsuleRequest request, List<MultipartFile> files) {
+    public void create(AuthenticatedUser authUser, Double latitude, Double longitude,
+                       String textContent, MultipartFile photo) {
         UserProfile creator = userProfileService.getOrCreate(authUser);
-        boolean hasText = request.textContent() != null && !request.textContent().isBlank();
-        boolean hasMedia = request.media() != null && !request.media().isEmpty();
-        if (!hasText && !hasMedia) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Capsule needs text or media");
-        }
-        if (hasMedia && files.size() != request.media().size()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Number of files must match number of media entries");
+
+        boolean hasText = textContent != null && !textContent.isBlank();
+        boolean hasPhoto = photo != null && !photo.isEmpty();
+        if (!hasText && !hasPhoto) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Capsule needs text or a photo");
         }
 
-        Point point = geometryFactory.createPoint(new Coordinate(request.longitude(), request.latitude()));
+        Point point = geometryFactory.createPoint(new Coordinate(longitude, latitude));
+        point.setSRID(4326);
+
         Capsule capsule = new Capsule();
         capsule.setCreator(creator);
         capsule.setLocation(point);
-        capsule.setTextContent(request.textContent());
-        capsule.setContentType(hasMedia ? "MIXED" : "TEXT");
+        capsule.setLatitude(latitude);
+        capsule.setLongitude(longitude);
+        capsule.setTextContent(hasText ? textContent.trim() : null);
+        capsule.setContentType(hasPhoto ? (hasText ? "MIXED" : "PHOTO") : "TEXT");
         capsule.setExpiryAt(OffsetDateTime.now().plusDays(30));
-        capsule = capsuleRepository.save(capsule);
 
-        if (hasMedia) {
-            for (int i = 0; i < request.media().size(); i++) {
-                CreateMediaRequest meta = request.media().get(i);
-                MultipartFile file = files.get(i);
-                String key = "capsules/" + capsule.getCapsuleId() + "/" + UUID.randomUUID() + "-" + meta.fileName();
-
-                try {
-                    s3Service.uploadBytes(key, file.getBytes(), meta.mimeType());
-                } catch (S3StorageException e) {
-                    throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Media upload failed, please try again");
-                } catch (IOException e) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not read uploaded file");
-                }
-
-                MediaObject obj = new MediaObject();
-                obj.setCapsule(capsule);
-                obj.setStorageKey(key);
-                obj.setMediaType(meta.mediaType());
-                obj.setSizeBytes(file.getSize());
-                mediaObjectRepository.save(obj);
+        try {
+            capsule = capsuleRepository.saveAndFlush(capsule);
+        } catch (DataIntegrityViolationException e) {
+            if (e.getMessage() != null && e.getMessage().contains("uq_same_creator_same_spot_24h")) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "You already dropped a capsule at this location today. Move a few metres away or come back tomorrow.");
             }
+            throw e;
+        }
+
+        if (hasPhoto) {
+            String originalName = photo.getOriginalFilename() != null
+                    ? photo.getOriginalFilename() : "photo.jpg";
+            String mimeType = photo.getContentType() != null
+                    ? photo.getContentType() : "image/jpeg";
+            String key = "capsules/" + capsule.getCapsuleId() + "/" + UUID.randomUUID() + "-" + originalName;
+
+            try {
+                s3Service.uploadBytes(key, photo.getBytes(), mimeType);
+            } catch (IOException e) {
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to upload photo");
+            }
+
+            MediaObject object = new MediaObject();
+            object.setCapsule(capsule);
+            object.setStorageKey(key);
+            object.setMediaType("PHOTO");
+            object.setSizeBytes(photo.getSize());
+            mediaObjectRepository.save(object);
         }
 
         creator.setPointsTotal(creator.getPointsTotal() + dropPoints);
+        creator.setDroppedCount(creator.getDroppedCount() + 1);
         userProfileRepository.save(creator);
     }
 
@@ -111,14 +127,17 @@ public class CapsuleService {
         UserProfile user = userProfileService.getOrCreate(authUser);
         Capsule capsule = capsuleRepository.findById(capsuleId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Capsule not found"));
+
         if (capsule.getCreator().getUserId().equals(user.getUserId()))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot discover own capsule");
         if (discoveryRepository.findByCapsuleAndDiscoverer(capsule, user).isPresent())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Already discovered");
 
-        boolean nearby = capsuleRepository.findNearby(request.latitude(), request.longitude(), proximityRadiusMeters, user.getUserId())
+        boolean nearby = capsuleRepository
+                .findNearby(request.latitude(), request.longitude(), proximityRadiusMeters, user.getUserId())
                 .stream().anyMatch(p -> p.getId().equals(capsuleId));
-        if (!nearby) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not within proximity radius");
+        if (!nearby)
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not within proximity radius");
 
         Discovery discovery = new Discovery();
         discovery.setCapsule(capsule);
@@ -127,27 +146,24 @@ public class CapsuleService {
         discoveryRepository.save(discovery);
 
         user.setPointsTotal(user.getPointsTotal() + discoveryPoints);
+        user.setDiscoveredCount(user.getDiscoveredCount() + 1);
         userProfileRepository.save(user);
 
         capsule.setExpiryAt(OffsetDateTime.now().plusDays(30));
         capsuleRepository.save(capsule);
 
-        notificationService.notifyCapsuleDiscovered(capsule.getCreator().getUserId().toString(), capsule.getCapsuleId().toString());
+        notificationService.notifyCapsuleDiscovered(
+                capsule.getCreator().getUserId().toString(),
+                capsule.getCapsuleId().toString());
 
-        // Build signed URLs after all DB writes — S3 failure here must not roll back the discovery
-        List<SignedMediaResponse> media = buildSignedMediaList(capsule);
+        List<SignedMediaResponse> media = mediaObjectRepository.findByCapsule(capsule).stream()
+                .map(m -> new SignedMediaResponse(
+                        m.getMediaId(),
+                        m.getMediaType(),
+                        s3Service.generateSignedGetUrl(m.getStorageKey()).toString()))
+                .toList();
+
         return new UnlockResponse(capsule.getCapsuleId(), capsule.getTextContent(), media, discoveryPoints, capsule.getExpiryAt());
-    }
-
-    public List<SignedMediaResponse> getMediaUrls(AuthenticatedUser authUser, UUID capsuleId) {
-        UserProfile profile = userProfileService.getOrCreate(authUser);
-        Capsule capsule = capsuleRepository.findById(capsuleId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Capsule not found"));
-        boolean isCreator = capsule.getCreator().getUserId().equals(profile.getUserId());
-        boolean isDiscoverer = discoveryRepository.findByCapsuleAndDiscoverer(capsule, profile).isPresent();
-        if (!isCreator && !isDiscoverer)
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
-        return buildSignedMediaList(capsule);
     }
 
     public List<MyCapsuleResponse> myCapsules(AuthenticatedUser authUser) {
@@ -169,28 +185,8 @@ public class CapsuleService {
         UserProfile profile = userProfileService.getOrCreate(authUser);
         Capsule capsule = capsuleRepository.findByCapsuleIdAndCreator(capsuleId, profile)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Capsule not found"));
-        mediaObjectRepository.findByCapsule(capsule).forEach(m -> {
-            try {
-                s3Service.deleteObject(m.getStorageKey());
-            } catch (S3StorageException e) {
-                log.warn("Could not delete S3 object {} for capsule {}, continuing with deletion", m.getStorageKey(), capsuleId);
-            }
-        });
+        mediaObjectRepository.findByCapsule(capsule).forEach(m -> s3Service.deleteObject(m.getStorageKey()));
         capsule.setStatus("DELETED");
         capsuleRepository.save(capsule);
-    }
-
-    private List<SignedMediaResponse> buildSignedMediaList(Capsule capsule) {
-        return mediaObjectRepository.findByCapsule(capsule).stream()
-                .map(m -> {
-                    String url = null;
-                    try {
-                        url = s3Service.generateSignedGetUrl(m.getStorageKey()).toString();
-                    } catch (S3StorageException e) {
-                        log.warn("Could not generate signed URL for media {}", m.getMediaId());
-                    }
-                    return new SignedMediaResponse(m.getMediaId(), m.getMediaType(), url);
-                })
-                .toList();
     }
 }

@@ -23,13 +23,9 @@ import java.util.UUID;
 
 @Component
 public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
+
     private static final Logger log = LoggerFactory.getLogger(FirebaseAuthenticationFilter.class);
 
-    /**
-     * Prevent Spring Boot from also registering this filter outside the Security
-     * filter chain (which would apply it twice – once by Security, once by the
-     * servlet container's normal FilterRegistrationBean scan).
-     */
     @Bean
     public FilterRegistrationBean<FirebaseAuthenticationFilter> disableAutoRegistration(
             FirebaseAuthenticationFilter filter) {
@@ -41,15 +37,13 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
+
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) {
             try {
                 String token = header.substring(7);
                 FirebaseToken decoded = FirebaseAuth.getInstance().verifyIdToken(token);
 
-                // Use UUID.nameUUIDFromBytes on a namespaced byte sequence to reduce
-                // collision risk vs. bare UID strings. The Firebase UID is prefixed
-                // with a fixed namespace so different short UIDs always differ.
                 String namespacedUid = "firebase:" + decoded.getUid();
                 UUID internalId = UUID.nameUUIDFromBytes(namespacedUid.getBytes(StandardCharsets.UTF_8));
 
@@ -61,12 +55,15 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                 var auth = new UsernamePasswordAuthenticationToken(
                         principal, token, List.of(new SimpleGrantedAuthority("ROLE_USER")));
                 SecurityContextHolder.getContext().setAuthentication(auth);
+
             } catch (Exception e) {
-                // Invalid or expired token — request continues unauthenticated
-                // and Spring Security will reject it at the authorisation layer.
-                log.warn("Firebase token verification failed: {}", e.getMessage());
+                // Log the real reason so we can debug 403s.
+                log.warn("[Firebase] Token verification failed: {} — {}", e.getClass().getSimpleName(), e.getMessage());
             }
+        } else {
+            log.debug("[Firebase] No Bearer token on {} {}", request.getMethod(), request.getRequestURI());
         }
+
         filterChain.doFilter(request, response);
     }
 }

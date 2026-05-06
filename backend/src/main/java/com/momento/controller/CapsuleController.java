@@ -1,12 +1,11 @@
 package com.momento.controller;
 
 import com.momento.dto.CapsuleDtos.*;
-import com.momento.entity.UserProfile;
 import com.momento.security.AuthenticatedUser;
 import com.momento.service.CapsuleService;
 import com.momento.service.UserProfileService;
-import jakarta.validation.Valid;
-import org.springframework.http.HttpStatus;
+import com.momento.entity.UserProfile;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -27,37 +26,39 @@ public class CapsuleController {
     }
 
     @GetMapping("/capsules/nearby")
-    public List<NearbyCapsuleResponse> nearby(@AuthenticationPrincipal AuthenticatedUser user,
-                                               @RequestParam double latitude,
-                                               @RequestParam double longitude,
-                                               @RequestParam(defaultValue = "50") int radiusMeters) {
+    public List<NearbyCapsuleResponse> nearby(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam double latitude,
+            @RequestParam double longitude,
+            @RequestParam(defaultValue = "50") int radiusMeters) {
         return capsuleService.getNearby(user, latitude, longitude, radiusMeters);
     }
 
     /**
-     * Accepts multipart/form-data with two parts:
-     *   - "data": JSON matching CreateCapsuleRequest (no localUri)
-     *   - "files": zero or more binary file parts, in the same order as the media[] array in "data"
+     * Create a capsule with optional photo.
+     * Accepts multipart/form-data so the real image bytes are transferred.
+     * Fields:
+     *   latitude    – required
+     *   longitude   – required
+     *   textContent – optional text message
+     *   photo       – optional image file
      */
     @PostMapping(value = "/capsules", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @ResponseStatus(HttpStatus.CREATED)
-    public void create(@AuthenticationPrincipal AuthenticatedUser user,
-                       @RequestPart("data") @Valid CreateCapsuleRequest request,
-                       @RequestPart(value = "files", required = false) List<MultipartFile> files) {
-        capsuleService.create(user, request, files != null ? files : List.of());
+    public void create(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam @NotNull Double latitude,
+            @RequestParam @NotNull Double longitude,
+            @RequestParam(required = false) String textContent,
+            @RequestPart(required = false) MultipartFile photo) {
+        capsuleService.create(user, latitude, longitude, textContent, photo);
     }
 
     @PostMapping("/capsules/{capsuleId}/unlock")
-    public UnlockResponse unlock(@AuthenticationPrincipal AuthenticatedUser user,
-                                  @PathVariable UUID capsuleId,
-                                  @Valid @RequestBody UnlockRequest request) {
+    public UnlockResponse unlock(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID capsuleId,
+            @RequestBody UnlockRequest request) {
         return capsuleService.unlock(user, capsuleId, request);
-    }
-
-    @GetMapping("/capsules/{capsuleId}/media-urls")
-    public List<SignedMediaResponse> refreshMediaUrls(@AuthenticationPrincipal AuthenticatedUser user,
-                                                       @PathVariable UUID capsuleId) {
-        return capsuleService.getMediaUrls(user, capsuleId);
     }
 
     @GetMapping("/capsules/mine")
@@ -66,7 +67,6 @@ public class CapsuleController {
     }
 
     @DeleteMapping("/capsules/{capsuleId}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID capsuleId) {
         capsuleService.deleteOwnCapsule(user, capsuleId);
     }
@@ -79,7 +79,10 @@ public class CapsuleController {
     @GetMapping("/users/me")
     public ProfileResponse me(@AuthenticationPrincipal AuthenticatedUser user) {
         UserProfile profile = userProfileService.getOrCreate(user);
-        return new ProfileResponse(profile.getUsername(), profile.getPointsTotal(),
-                userProfileService.droppedCount(profile), userProfileService.discoveredCount(profile));
+        return new ProfileResponse(
+                profile.getUsername(),
+                profile.getPointsTotal(),
+                userProfileService.droppedCount(profile),
+                userProfileService.discoveredCount(profile));
     }
 }

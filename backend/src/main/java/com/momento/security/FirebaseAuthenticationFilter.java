@@ -6,6 +6,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -21,6 +23,7 @@ import java.util.UUID;
 
 @Component
 public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
+    private static final Logger log = LoggerFactory.getLogger(FirebaseAuthenticationFilter.class);
 
     /**
      * Prevent Spring Boot from also registering this filter outside the Security
@@ -58,9 +61,10 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                 var auth = new UsernamePasswordAuthenticationToken(
                         principal, token, List.of(new SimpleGrantedAuthority("ROLE_USER")));
                 SecurityContextHolder.getContext().setAuthentication(auth);
-            } catch (Exception ignored) {
-                // Invalid or expired token – request continues unauthenticated
+            } catch (Exception e) {
+                // Invalid or expired token — request continues unauthenticated
                 // and Spring Security will reject it at the authorisation layer.
+                log.warn("Firebase token verification failed: {}", e.getMessage());
             }
         }
         filterChain.doFilter(request, response);

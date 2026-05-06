@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.UUID;
 
 public class CapsuleDtos {
-    public record CreateMediaRequest(@NotBlank String mediaType, @NotBlank String fileName, @NotBlank String mimeType, String localUri) {}
+    public record CreateMediaRequest(@NotBlank String mediaType, @NotBlank String fileName, @NotBlank String mimeType) {}
     public record CreateCapsuleRequest(
             @NotNull Double latitude,
             @NotNull Double longitude,

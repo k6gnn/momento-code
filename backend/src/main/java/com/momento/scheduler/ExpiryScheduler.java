@@ -1,9 +1,12 @@
 package com.momento.scheduler;
 
+import com.momento.exception.S3StorageException;
 import com.momento.repository.CapsuleRepository;
 import com.momento.repository.MediaObjectRepository;
 import com.momento.service.NotificationService;
 import com.momento.service.S3Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,6 +15,7 @@ import java.time.OffsetDateTime;
 
 @Component
 public class ExpiryScheduler {
+    private static final Logger log = LoggerFactory.getLogger(ExpiryScheduler.class);
     private final CapsuleRepository capsuleRepository;
     private final MediaObjectRepository mediaObjectRepository;
     private final S3Service s3Service;
@@ -29,7 +33,13 @@ public class ExpiryScheduler {
     public void expireCapsules() {
         var expired = capsuleRepository.findByStatusAndExpiryAtBefore("ACTIVE", OffsetDateTime.now());
         for (var capsule : expired) {
-            mediaObjectRepository.findByCapsule(capsule).forEach(m -> s3Service.deleteObject(m.getStorageKey()));
+            mediaObjectRepository.findByCapsule(capsule).forEach(m -> {
+                try {
+                    s3Service.deleteObject(m.getStorageKey());
+                } catch (S3StorageException e) {
+                    log.warn("Could not delete S3 object {} during expiry of capsule {}, continuing", m.getStorageKey(), capsule.getCapsuleId());
+                }
+            });
             capsule.setStatus("EXPIRED");
             capsuleRepository.save(capsule);
         }
